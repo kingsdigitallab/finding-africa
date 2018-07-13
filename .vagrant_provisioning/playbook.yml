@@ -81,18 +81,11 @@
     - vars.yml
   gather_facts: false
   tasks:
-  - name: python | make python3 default version
-    become: yes
-    alternatives:
-      link: /usr/bin/python
-      name: python
-      path: /usr/bin/python3
-      priority: 10
-
   - name: pip | install virtualenv
     become: yes
     pip:
       name: virtualenv
+      executable: pip
       state: latest
     tags:
       - python
