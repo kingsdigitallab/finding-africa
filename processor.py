@@ -6,12 +6,15 @@ import imaplib
 import logging
 import logging.config
 import os
-import pandas as pd
 import re
 import shutil
+import smtplib
+from datetime import datetime
+from email.message import EmailMessage
+
 import yaml
 
-from datetime import datetime
+import pandas as pd
 from lxml import etree
 
 imaplib.IMAP4.debug = imaplib.IMAP4_SSL.debug = 1
@@ -48,6 +51,10 @@ def get_data_from_mailbox(config):
     address = config.get('mailbox', 'address')
     username = config.get('mailbox', 'username')
     password = config.get('mailbox', 'password')
+
+    if not address or not username or not password:
+        logger.error('Invalid mailbox confiration, check the config.')
+        return None
 
     logger.debug('Connecting via ssl IMAP...')
     mailbox = imaplib.IMAP4_SSL(address, 993)
@@ -142,6 +149,13 @@ def update_sequence(config, filename, address, seq):
 
 def process_attachments(config, attachments):
     logger = logging.getLogger()
+
+    if not attachments:
+        logger.info('No attachments found')
+        return
+
+    logger.debug('Processing attachments: {}'.format(attachments))
+
     error_path = config.get('DEFAULT', 'error')
     in_path = config.get('DEFAULT', 'sandbox')
     out_path = config.get('DEFAULT', 'output')
@@ -149,7 +163,6 @@ def process_attachments(config, attachments):
 
     for root, dirs, files in os.walk(in_path):
         for name in files:
-            print(name)
             filename, ext = os.path.splitext(name)
 
             if ext == '.xlsx':
@@ -157,23 +170,38 @@ def process_attachments(config, attachments):
                     filepath = os.path.join(root, name)
                     logger.info('{}: processing attachment'.format(filepath))
 
+                    if filepath not in attachments:
+                        logger.warning(
+                            ('Skipping files that are not associated with an '
+                             'email address: {}').format(filepath)
+                        )
+                        continue
+
                     collection = clean_collection(filepath)
+                    email = attachments[filepath]
 
                     missing_fields = get_missing_fields(collection)
                     if missing_fields:
                         logger.warning('{}: has missing fields {}'.format(
                             filepath, missing_fields))
                         shutil.move(filepath, os.path.join(error_path, name))
-                        # TODO: generate failure report
+
+                        logger.info('Sending failure report to: {}'.format(
+                            email))
+                        send_failure_report(config, email, missing_fields)
                         continue
 
                     filename = os.path.splitext(name)[0]
 
-                    process_collection(
-                        collection,
-                        os.path.join(out_path, '{}.xml'.format(filename)))
+                    collection_filename = os.path.join(
+                        out_path, '{}.xml'.format(filename))
+                    process_collection(collection, collection_filename)
                     process_terms(filepath, out_path)
-                    shutil.move(filepath, os.path.join(success_path, name))
+
+                    success_filepath = os.path.join(success_path, name)
+                    shutil.move(filepath, success_filepath)
+
+                    send_success_report(config, email, collection_filename)
                 except Exception as e:
                     logger.error('{}: failed to process'.format(filepath))
                     logger.error(e.args)
@@ -207,6 +235,42 @@ def get_missing_fields(collection):
                 missing_fields.append(c)
 
     return missing_fields
+
+
+def send_failure_report(config, email, missing_fields):
+    lang = config.get(email, 'language')
+    if not lang:
+        lang = 'en'
+
+    message = 'Missing fields'
+    with open(config.get('reports', 'failure_{}'.format(lang))) as f:
+        message = f.read()
+        f.close()
+
+    send_email(config, email, 'Missing fields', '{}\n{}'.format(
+        message, missing_fields))
+
+
+def send_email(config, to, subject, message):
+    address = config.get('mailbox', 'address')
+    username = config.get('mailbox', 'username')
+    password = config.get('mailbox', 'password')
+
+    if not address or not username or not password:
+        logger.error('Invalid mailbox configuration, check the config.')
+        return
+
+    msg = EmailMessage()
+    msg.set_content(message)
+
+    msg['Subject'] = subject
+    msg['From'] = username
+    msg['To'] = to
+
+    s = smtplib.SMTP(address)
+    s.login(username, password)
+    s.send_message(msg)
+    s.quit()
 
 
 def process_collection(collection, filename):
@@ -286,6 +350,25 @@ def terms_to_xml(terms, root):
     return etree.ElementTree(xml)
 
 
+def send_success_report(config, email, filepath):
+    lang = config.get(email, 'language')
+    if not lang:
+        lang = 'en'
+
+    message = 'Thank you for your email'
+    with open(config.get('reports', 'success_{}'.format(lang))) as f:
+        message = f.read()
+        f.close()
+    send_email(config, email, 'Thank you for your email', message)
+
+    to = config.get('reports', 'email')
+    if not to:
+        logger.error('Missing email address to send success reports')
+
+    send_email(config, to, 'New files added', 'From {}, {}'.format(
+        email, filepath))
+
+
 if __name__ == '__main__':
     # the current logging configuration is logging to the console, change to
     # log to a file with rotation before deploying
@@ -305,5 +388,4 @@ if __name__ == '__main__':
 
     logger.info('Processor: processing attachments')
     process_attachments(config, attachments)
-
     logger.info('Processor: end')
