@@ -238,9 +238,7 @@ def get_missing_fields(collection):
 
 
 def send_failure_report(config, email, missing_fields):
-    lang = config.get(email, 'language')
-    if not lang:
-        lang = 'en'
+    lang = get_language(config, email)
 
     message = 'Missing fields'
     with open(config.get('reports', 'failure_{}'.format(lang))) as f:
@@ -249,6 +247,14 @@ def send_failure_report(config, email, missing_fields):
 
     send_email(config, email, 'Missing fields', '{}\n{}'.format(
         message, missing_fields))
+
+
+def get_language(config, email):
+    lang = config.get(email, 'language')
+    if not lang or lang not in ['en', 'fr']:
+        return 'en'
+
+    return lang
 
 
 def send_email(config, to, subject, message):
@@ -351,9 +357,7 @@ def terms_to_xml(terms, root):
 
 
 def send_success_report(config, email, filepath):
-    lang = config.get(email, 'language')
-    if not lang:
-        lang = 'en'
+    lang = get_language(config, email)
 
     message = 'Thank you for your email'
     with open(config.get('reports', 'success_{}'.format(lang))) as f:
