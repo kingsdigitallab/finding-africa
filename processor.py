@@ -240,12 +240,14 @@ def get_missing_fields(collection):
 def send_failure_report(config, email, missing_fields):
     lang = get_language(config, email)
 
-    message = 'Missing fields'
+    subject = config.get('reports', 'failure_subject_{}'.format(lang))
+
+    message = 'There were issues with your email'
     with open(config.get('reports', 'failure_{}'.format(lang))) as f:
         message = f.read()
         f.close()
 
-    send_email(config, email, 'Missing fields', '{}\n{}'.format(
+    send_email(config, email, subject, '{}\n{}'.format(
         message, missing_fields))
 
 
@@ -359,11 +361,14 @@ def terms_to_xml(terms, root):
 def send_success_report(config, email, filepath):
     lang = get_language(config, email)
 
+    subject = config.get('reports', 'success_subject_{}'.format(lang))
+
     message = 'Thank you for your email'
     with open(config.get('reports', 'success_{}'.format(lang))) as f:
         message = f.read()
         f.close()
-    send_email(config, email, 'Thank you for your email', message)
+
+    send_email(config, email, subject, message)
 
     to = config.get('reports', 'email')
     if not to:
