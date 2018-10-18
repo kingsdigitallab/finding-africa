@@ -1,1 +1,7 @@
-Missing fields:
+Unfortunately there was a problem with the "$filename" file that you sent to 
+Archives Africa. Some required information was missing, so could you please
+resend the file after filling in the fields below:
+$missing_fields
+
+Many thanks for your attention. If you need any help then please refer to the
+help section of the Archives Africa website.

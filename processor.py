@@ -16,6 +16,7 @@ import yaml
 
 import pandas as pd
 from lxml import etree
+from string import Template
 
 imaplib.IMAP4.debug = imaplib.IMAP4_SSL.debug = 1
 
@@ -98,11 +99,14 @@ def get_data_from_mailbox(config):
                 logger.debug('{}: No attachments found...'.format(sender))
                 continue
 
+            attachment_filename = part.get_filename()
+
             seq, filename = save_attachment(config, sender, data)
-            attachments[filename] = sender
             logger.info(
                 '{}: Downloaded attachment {}'.format(sender, filename))
 
+            attachments[filename] = {'email': sender,
+                                     'file': attachment_filename}
             update_sequence(config, 'config.ini', sender, seq)
 
             counter += 1
@@ -178,7 +182,8 @@ def process_attachments(config, attachments):
                         continue
 
                     collection = clean_collection(filepath)
-                    email = attachments[filepath]
+                    email = attachments[filepath]['email']
+                    original_filename = attachments[filepath]['file']
 
                     missing_fields = get_missing_fields(collection)
                     if missing_fields:
@@ -188,7 +193,8 @@ def process_attachments(config, attachments):
 
                         logger.info('Sending failure report to: {}'.format(
                             email))
-                        send_failure_report(config, email, missing_fields)
+                        send_failure_report(
+                            config, email, original_filename, missing_fields)
                         continue
 
                     filename = os.path.splitext(name)[0]
@@ -201,7 +207,8 @@ def process_attachments(config, attachments):
                     success_filepath = os.path.join(success_path, name)
                     shutil.move(filepath, success_filepath)
 
-                    send_success_report(config, email, collection_filename)
+                    send_success_report(
+                        config, email, original_filename, collection_filename)
                 except Exception as e:
                     logger.error('{}: failed to process'.format(filepath))
                     logger.error(e.args)
@@ -237,16 +244,23 @@ def get_missing_fields(collection):
     return missing_fields
 
 
-def send_failure_report(config, email, missing_fields):
+def send_failure_report(config, email, filename, missing_fields):
     lang = get_language(config, email)
 
-    message = 'Missing fields'
+    subject = config.get('reports', 'failure_subject_{}'.format(lang))
+
+    message = 'There were issues with your email'
     with open(config.get('reports', 'failure_{}'.format(lang))) as f:
         message = f.read()
         f.close()
 
-    send_email(config, email, 'Missing fields', '{}\n{}'.format(
-        message, missing_fields))
+        if message:
+            data = {'filename': filename,
+                    'missing_fields': ' * ' + '\n * '.join(missing_fields)}
+            message_template = Template(message)
+            message = message_template.safe_substitute(data)
+
+    send_email(config, email, subject, message)
 
 
 def get_language(config, email):
@@ -356,20 +370,28 @@ def terms_to_xml(terms, root):
     return etree.ElementTree(xml)
 
 
-def send_success_report(config, email, filepath):
+def send_success_report(config, email, filename, filepath):
     lang = get_language(config, email)
+
+    subject = config.get('reports', 'success_subject_{}'.format(lang))
 
     message = 'Thank you for your email'
     with open(config.get('reports', 'success_{}'.format(lang))) as f:
         message = f.read()
         f.close()
-    send_email(config, email, 'Thank you for your email', message)
+
+        if message:
+            data = {'filename': filename}
+            message_template = Template(message)
+            message = message_template.safe_substitute(data)
+
+    send_email(config, email, subject, message)
 
     to = config.get('reports', 'email')
     if not to:
         logger.error('Missing email address to send success reports')
 
-    send_email(config, to, 'New files added', 'From {}, {}'.format(
+    send_email(config, to, 'New files added', 'Sent by {}, {}'.format(
         email, filepath))
 
 

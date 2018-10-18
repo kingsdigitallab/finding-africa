@@ -1,0 +1,7 @@
+Malheureusement, il y avait un problème avec le fichier "$filename" que vous avez envoyé à
+Archives Afrique. Certaines informations requises manquaient, alors pourriez-vous s'il vous plaît
+renvoyer le fichier après avoir rempli les champs ci-dessous:
+$missing_fields
+
+Merci beaucoup pour votre attention. Si vous avez besoin d’aide, veuillez vous reporter au
+section d'aide du site Web Archives Africa.
